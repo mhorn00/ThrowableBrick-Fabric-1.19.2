@@ -1,0 +1,18 @@
+# gradle
+
+.gradle/
+build/
+out/
+classes/
+
+# eclipse
+*.launch
+*.settings
+# idea
+bin/
+.classpath
+.project
+
+# fabric
+run/
+
