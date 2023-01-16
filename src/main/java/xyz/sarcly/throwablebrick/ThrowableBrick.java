@@ -23,10 +23,11 @@ public class ThrowableBrick implements ModInitializer, ClientModInitializer {
 	public static final String MODID = "throwablebrick";
 	public static final Logger LOGGER = LoggerFactory.getLogger(MODID);
 
+	//Packets
 	public static final Identifier BRICK_ROTATE_PACKET = new Identifier(MODID, "brick_rotate_packet");
 	
 	//Entities
-	public static final EntityType<BrickEntity> BRICK_ENTITY = FabricEntityTypeBuilder.<BrickEntity>create(SpawnGroup.MISC, BrickEntity::new).dimensions(EntityDimensions.fixed(0.525f, 0.525f)).trackRangeBlocks(6).trackedUpdateRate(20).build();
+	public static final EntityType<BrickEntity> BRICK_ENTITY = FabricEntityTypeBuilder.<BrickEntity>create(SpawnGroup.MISC, BrickEntity::new).dimensions(EntityDimensions.fixed(0.5f, 0.5f)).trackRangeBlocks(6).trackedUpdateRate(20).build();
 
 	//Models
 	public static final EntityModelLayer BRICK_MODEL = new EntityModelLayer(new Identifier(MODID, "brick"), "main");

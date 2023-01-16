@@ -29,13 +29,17 @@ public class BrickEntityRenderer extends EntityRenderer<BrickEntity> {
 	}
 
 	@Override public void render(BrickEntity brickEnt, float yaw, float tickDelta, MatrixStack matrixStack, VertexConsumerProvider vertexConsumerProvider, int light) {
-		ThrowableBrick.LOGGER.info("id="+brickEnt.getId()+", g="+tickDelta+", SET ROTATION:("+brickEnt.getPitch()+", "+brickEnt.getYaw()+", "+brickEnt.getRoll()+"), PREV ROTATION:("+brickEnt.prevPitch+", "+brickEnt.prevYaw+", "+brickEnt.prevRoll+"), RENDER ROTATION:("+MathHelper.lerp(tickDelta, brickEnt.prevPitch, brickEnt.getPitch())+", "+MathHelper.lerp(tickDelta, brickEnt.prevYaw, brickEnt.getYaw())+", "+MathHelper.lerp(tickDelta, brickEnt.prevRoll, brickEnt.getRoll())+")");
 		if (brickEnt.visible) {
+			//ThrowableBrick.LOGGER.info("### tickDelta="+tickDelta+", SET ROTATION:("+brickEnt.getPitch()+", "+brickEnt.getYaw()+", "+brickEnt.getRoll()+"), PREV ROTATION:("+brickEnt.prevPitch+", "+brickEnt.prevYaw+", "+brickEnt.prevRoll+"), RENDER ROTATION:("+MathHelper.lerp(tickDelta, brickEnt.prevPitch, brickEnt.getPitch())+", "+MathHelper.lerp(tickDelta, brickEnt.prevYaw, brickEnt.getYaw())+", "+MathHelper.lerp(tickDelta, brickEnt.prevRoll, brickEnt.getRoll())+")");
 			matrixStack.push();
-			//matrixStack.translate(0.0f, 0.0f, 0.0f);
-			matrixStack.multiply(Vec3f.POSITIVE_X.getDegreesQuaternion(MathHelper.lerp(tickDelta, brickEnt.prevPitch, brickEnt.getPitch())));
-			matrixStack.multiply(Vec3f.POSITIVE_Y.getDegreesQuaternion(MathHelper.lerp(tickDelta, brickEnt.prevYaw, brickEnt.getYaw())));
-			matrixStack.multiply(Vec3f.POSITIVE_Z.getDegreesQuaternion(MathHelper.lerp(tickDelta, brickEnt.prevRoll, brickEnt.getRoll())));
+			float x = MathHelper.lerp(tickDelta, brickEnt.prevPitch, brickEnt.getPitch());
+			float y = MathHelper.lerp(tickDelta, brickEnt.prevYaw, brickEnt.getYaw());
+			float z = MathHelper.lerp(tickDelta, brickEnt.prevRoll, brickEnt.getRoll());
+			//matrixStack.translate(MathHelper.lerp(tickDelta, brickEnt.prevOffset.getX(), brickEnt.offset.getX()), MathHelper.lerp(tickDelta, brickEnt.prevOffset.getY(), brickEnt.offset.getY()), MathHelper.lerp(tickDelta, brickEnt.prevOffset.getZ(), brickEnt.offset.getZ()));
+			matrixStack.translate(0.0f, 0.25f, 0.0f);
+			matrixStack.multiply(Vec3f.POSITIVE_X.getDegreesQuaternion(x));
+			matrixStack.multiply(Vec3f.POSITIVE_Y.getDegreesQuaternion(y));
+			matrixStack.multiply(Vec3f.POSITIVE_Z.getDegreesQuaternion(z));
 	        VertexConsumer vertexConsumer = ItemRenderer.getDirectItemGlintConsumer(vertexConsumerProvider, this.model.getLayer(this.getTexture(brickEnt)), false, false);
 	        this.model.render(matrixStack, vertexConsumer, light, OverlayTexture.DEFAULT_UV, 1.0f, 1.0f, 1.0f, 1.0f);
 	        matrixStack.pop();
