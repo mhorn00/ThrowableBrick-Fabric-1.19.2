@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "throwablebrick",
+  "version": "0.1",
+
+  "name": "Throwable Brick",
+  "description": "throwable brick lol",
+  "authors": [
+    "Sarcly"
+  ],
+  "contact": {
+    "homepage": "",
+    "sources": ""
+  },
+
+  "license": "CC0-1.0",
+  "icon": "assets/throwablebrick/icon.png",
+
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "xyz.sarcly.throwablebrick.ThrowableBrick"
+    ],
+    "client": ["xyz.sarcly.throwablebrick.ThrowableBrick"]
+  },
+  "mixins": [
+    "throwablebrick.mixins.json"
+  ],
+
+  "depends": {
+    "fabricloader": ">=0.14.11",
+    "fabric-api": "*",
+    "minecraft": "~1.19.2",
+    "java": ">=17"
+  },
+  "suggests": {
+    "another-mod": "*"
+  }
+}
