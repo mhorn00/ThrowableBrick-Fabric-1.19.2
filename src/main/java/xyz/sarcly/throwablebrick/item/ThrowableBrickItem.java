@@ -86,9 +86,10 @@ public class ThrowableBrickItem extends RangedWeaponItem {
 		if (!world.isClient) {// <<Server Side>>
 			BrickEntity brickEnt = createBrick(world, stack, playerEntity);
 			brickEnt.setRotation(Vec3f.ZERO);
-			//brickEnt.setVelocity(playerEntity, playerEntity.getPitch(), playerEntity.getYaw(), new Vec3f((world.random.nextFloat()*baseRotVel)+offsetRotVel*(world.random.nextBoolean()?1.0f:-1.0f),(world.random.nextFloat()*baseRotVel)+offsetRotVel*(world.random.nextBoolean()?1.0f:-1.0f),(world.random.nextFloat()*baseRotVel)+offsetRotVel*(world.random.nextBoolean()?1.0f:-1.0f)), pullProgress * 1.5f, 1.0f);
-			brickEnt.setVelocity(playerEntity, playerEntity.getPitch(), playerEntity.getYaw(), new Vec3f(10f, 10f, 0f), pullProgress * 1.5f, 1.0f);
-			if (pullProgress == 1.0f) brickEnt.setCrit(true);
+			brickEnt.setVelocity(playerEntity, playerEntity.getPitch(), playerEntity.getYaw(), new Vec3f((world.random.nextFloat()*baseRotVel)+offsetRotVel*(world.random.nextBoolean()?1.0f:-1.0f),(world.random.nextFloat()*baseRotVel)+offsetRotVel*(world.random.nextBoolean()?1.0f:-1.0f),(world.random.nextFloat()*baseRotVel)+offsetRotVel*(world.random.nextBoolean()?1.0f:-1.0f)), pullProgress * 1.5f, 1.0f);
+			//brickEnt.setVelocity(playerEntity, playerEntity.getPitch(), playerEntity.getYaw(), new Vec3f(10f, 10f, 0f), pullProgress * 1.5f, 1.0f);
+			brickEnt.punchLvl = EnchantmentHelper.getLevel(Enchantments.PUNCH, stack);
+			brickEnt.powerLvl = EnchantmentHelper.getLevel(Enchantments.POWER, stack);
 			if (playerEntity.getAbilities().creativeMode || EnchantmentHelper.getLevel(Enchantments.INFINITY, stack) > 0) brickEnt.pickupType = PickupPermission.CREATIVE_ONLY;
 			world.spawnEntity(brickEnt);
 		}

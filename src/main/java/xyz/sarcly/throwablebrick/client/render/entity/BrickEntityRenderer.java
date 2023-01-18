@@ -17,6 +17,7 @@ import net.minecraft.util.math.Vec3f;
 import xyz.sarcly.throwablebrick.ThrowableBrick;
 import xyz.sarcly.throwablebrick.client.render.entity.model.BrickEntityModel;
 import xyz.sarcly.throwablebrick.entity.projectile.BrickEntity;
+import xyz.sarcly.throwablebrick.util.Rotation;
 
 @Environment(value=EnvType.CLIENT)
 public class BrickEntityRenderer extends EntityRenderer<BrickEntity> {
@@ -29,13 +30,13 @@ public class BrickEntityRenderer extends EntityRenderer<BrickEntity> {
 	}
 
 	@Override public void render(BrickEntity brickEnt, float yaw, float tickDelta, MatrixStack matrixStack, VertexConsumerProvider vertexConsumerProvider, int light) {
-		if (brickEnt.visible) {
-			//ThrowableBrick.LOGGER.info("### tickDelta="+tickDelta+", SET ROTATION:("+brickEnt.getPitch()+", "+brickEnt.getYaw()+", "+brickEnt.getRoll()+"), PREV ROTATION:("+brickEnt.prevPitch+", "+brickEnt.prevYaw+", "+brickEnt.prevRoll+"), RENDER ROTATION:("+MathHelper.lerp(tickDelta, brickEnt.prevPitch, brickEnt.getPitch())+", "+MathHelper.lerp(tickDelta, brickEnt.prevYaw, brickEnt.getYaw())+", "+MathHelper.lerp(tickDelta, brickEnt.prevRoll, brickEnt.getRoll())+")");
+		if (!brickEnt.inInit) {
 			matrixStack.push();
-			float x = MathHelper.lerp(tickDelta, brickEnt.prevPitch, brickEnt.getPitch());
-			float y = MathHelper.lerp(tickDelta, brickEnt.prevYaw, brickEnt.getYaw());
-			float z = MathHelper.lerp(tickDelta, brickEnt.prevRoll, brickEnt.getRoll());
-			//matrixStack.translate(MathHelper.lerp(tickDelta, brickEnt.prevOffset.getX(), brickEnt.offset.getX()), MathHelper.lerp(tickDelta, brickEnt.prevOffset.getY(), brickEnt.offset.getY()), MathHelper.lerp(tickDelta, brickEnt.prevOffset.getZ(), brickEnt.offset.getZ()));
+			Rotation r = brickEnt.getRotation();
+			float x = MathHelper.lerp(tickDelta, r.getPrevPitch(), r.getPitch());
+			float y = MathHelper.lerp(tickDelta, r.getPrevYaw(), r.getYaw());
+			float z = MathHelper.lerp(tickDelta, r.getPrevRoll(), r.getRoll());
+			//ThrowableBrick.LOGGER.info("### tickDelta="+tickDelta+", g="+brickEnt.inGround+", CURRENT ROTATION:("+r.getPrevPitch()+", "+r.getPrevYaw()+", "+r.getPrevRoll()+"), PREV ROTATION:("+r.getPitch()+", "+r.getYaw()+", "+r.getRoll()+"), RENDER ROTATION:("+x+", "+y+", "+z+")");
 			matrixStack.translate(0.0f, 0.25f, 0.0f);
 			matrixStack.multiply(Vec3f.POSITIVE_X.getDegreesQuaternion(x));
 			matrixStack.multiply(Vec3f.POSITIVE_Y.getDegreesQuaternion(y));

@@ -9,13 +9,12 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.client.util.GlfwUtil;
+import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.data.DataTracker;
-import net.minecraft.entity.data.TrackedData;
-import net.minecraft.entity.data.TrackedDataHandlerRegistry;
+import net.minecraft.entity.attribute.EntityAttributes;
+import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.projectile.PersistentProjectileEntity;
 import net.minecraft.entity.projectile.PersistentProjectileEntity.PickupPermission;
@@ -28,17 +27,19 @@ import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtHelper;
 import net.minecraft.nbt.NbtList;
 import net.minecraft.network.PacketByteBuf;
+import net.minecraft.network.packet.s2c.play.GameStateChangeS2CPacket;
 import net.minecraft.particle.ParticleTypes;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.Identifier;
-import net.minecraft.util.Util;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.EulerAngle;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Vec3f;
 import net.minecraft.util.registry.Registry;
@@ -46,25 +47,23 @@ import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.world.RaycastContext;
 import net.minecraft.world.World;
 import xyz.sarcly.throwablebrick.ThrowableBrick;
-import xyz.sarcly.throwablebrick.util.BrickEntityHelper;
+import xyz.sarcly.throwablebrick.util.Rotation;
 
 public class BrickEntity extends ProjectileEntity {
-	private static final TrackedData<Byte> PROJECTILE_FLAGS = DataTracker.registerData(PersistentProjectileEntity.class, TrackedDataHandlerRegistry.BYTE);
-	private static final int CRIT_FLAG = 1;
+	private static final short MAX_AGE = 1200;
+	private static final double BASE_DAMAGE = 6;
 	public PickupPermission pickupType = PickupPermission.DISALLOWED;
-	private SoundEvent sound = SoundEvents.ENTITY_ARROW_HIT;
+	private SoundEvent sound = SoundEvents.ENTITY_GENERIC_HURT;
 	private Vec3f rotationalVelocity = Vec3f.ZERO;
-	private float roll;
-	public float prevRoll;
+	private Rotation rotation = new Rotation(0, 0, 0);
 	private short age;
 	private double damage;
 	public boolean inGround = false;
-	public boolean visible = false;
-	private boolean needUpdateClient = true;
-	private byte updateCount = -2;
-	public Vec3d offset = Vec3d.ZERO;
-	public Vec3d prevOffset = Vec3d.ZERO;
 	@Nullable private BlockState hitBlock;
+	public int punchLvl;
+	public int powerLvl;
+	private byte initWait = -2;
+	public boolean inInit = true;
 
 	// =====CONSTRUCTORS & INIT=====
 
@@ -81,11 +80,11 @@ public class BrickEntity extends ProjectileEntity {
 		this(type, owner.getX(), owner.getEyeY() - (double) 0.1f, owner.getZ(), world);
 		if (owner instanceof PlayerEntity) this.pickupType = PickupPermission.ALLOWED;
 		this.setOwner(owner);
+		if (this.powerLvl>0) this.damage = BASE_DAMAGE+(float)this.powerLvl*0.5+0.5;
+		else this.damage = BASE_DAMAGE;
 	}
 
-	@Override protected void initDataTracker() {
-		this.dataTracker.startTracking(PROJECTILE_FLAGS, (byte) 0);
-	}
+	@Override protected void initDataTracker() {}
 
 	public static void receiveBrickRotate(MinecraftClient client, ClientPlayNetworkHandler handler, PacketByteBuf buf, PacketSender responseSender) {
 		if (client == null || client.world == null) return;
@@ -96,36 +95,35 @@ public class BrickEntity extends ProjectileEntity {
 			float pitch = buf.readFloat();
 			float yaw = buf.readFloat();
 			float roll = buf.readFloat();
+			float ppitch = buf.readFloat();
+			float pyaw = buf.readFloat();
+			float proll = buf.readFloat();
 			float pVel = buf.readFloat();
 			float yVel = buf.readFloat();
 			float rVel = buf.readFloat();
-			double oX = buf.readDouble();
-			double oY = buf.readDouble();
-			double oZ = buf.readDouble();
 			client.execute(() -> {
 				brickEnt.inGround = inGround;
-				brickEnt.setRotation(pitch, yaw, roll);
+				brickEnt.setRotation(pitch, yaw, roll, ppitch, pyaw, proll);
 				brickEnt.setRotationalVelocity(new Vec3f(pVel, yVel, rVel));
-				brickEnt.offset = new Vec3d(oX, oY, oZ);
 			});
 		}
 	}
-
+	
 	// =====GETTERS=====
-
-	private PacketByteBuf getPacketData(int id, Vec3f rotation, Vec3f rotationVelocity) {
+	
+	private PacketByteBuf getPacketData() {
 		PacketByteBuf buf = PacketByteBufs.create();
-		buf.writeInt(id);
+		buf.writeInt(this.getId());
 		buf.writeBoolean(this.inGround);
-		buf.writeFloat(rotation.getX());
-		buf.writeFloat(rotation.getY());
-		buf.writeFloat(rotation.getZ());
-		buf.writeFloat(rotationVelocity.getX());
-		buf.writeFloat(rotationVelocity.getY());
-		buf.writeFloat(rotationVelocity.getZ());
-		buf.writeDouble(offset.getX());
-		buf.writeDouble(offset.getY());
-		buf.writeDouble(offset.getZ());
+		buf.writeFloat(this.rotation.getPitch());
+		buf.writeFloat(this.rotation.getYaw());
+		buf.writeFloat(this.rotation.getRoll());
+		buf.writeFloat(this.rotation.getPrevPitch());
+		buf.writeFloat(this.rotation.getPrevYaw());
+		buf.writeFloat(this.rotation.getPrevRoll());
+		buf.writeFloat(this.rotationalVelocity.getX());
+		buf.writeFloat(this.rotationalVelocity.getY());
+		buf.writeFloat(this.rotationalVelocity.getZ());
 		return buf;
 	}
 
@@ -133,22 +131,14 @@ public class BrickEntity extends ProjectileEntity {
 		return this.rotationalVelocity;
 	}
 
-	public Vec3f getRotation() {
-		return new Vec3f(this.getPitch(), this.getYaw(), this.getRoll());
-	}
-
-	public float getRoll() {
-		return this.roll;
-	}
-
-	public boolean isCrit() {
-		return (this.dataTracker.get(PROJECTILE_FLAGS) & 1) != 0;
+	public Rotation getRotation() {
+		return this.rotation;
 	}
 
 	protected ItemStack asItemStack() {
 		return new ItemStack(Items.BRICK);
 	}
-
+	
 	@Override public boolean shouldRender(double distance) {
 		double d = this.getBoundingBox().getAverageSideLength() * 10.0;
 		if (Double.isNaN(d)) d = 1.0;
@@ -162,7 +152,6 @@ public class BrickEntity extends ProjectileEntity {
 			this.damage = nbt.getDouble("Damage");
 		}
 		this.pickupType = PickupPermission.fromOrdinal(nbt.getByte("Pickup"));
-		this.setCrit(nbt.getBoolean("Crit"));
 		if (nbt.contains("SoundEvent", NbtElement.STRING_TYPE)) {
 			this.sound = Registry.SOUND_EVENT.getOrEmpty(new Identifier(nbt.getString("SoundEvent"))).orElse(this.sound);
 		}
@@ -170,7 +159,6 @@ public class BrickEntity extends ProjectileEntity {
 			this.hitBlock = NbtHelper.toBlockState(nbt.getCompound("HitBlock"));
 		}
 		this.inGround = nbt.getBoolean("InGround");
-		this.setRoll(nbt.getFloat("Roll"));
 		NbtList nbtRotVel = nbt.getList("RotationalVelocity", NbtElement.FLOAT_TYPE);
 		this.setRotationalVelocity(new Vec3f(nbtRotVel.getFloat(0), nbtRotVel.getFloat(1), nbtRotVel.getFloat(2)));
 	}
@@ -186,91 +174,25 @@ public class BrickEntity extends ProjectileEntity {
 		this.setRotationalVelocity(rotVel);
 		this.setVelocity(velocity);
 	}
-
+	
 	public void setRotation(float pitch, float yaw, float roll) {
-		this.setPitch(pitch);
-		this.setYaw(yaw);
-		this.setRoll(roll);
+		this.rotation.setRotation(pitch, yaw, roll);
+	}
+	
+	public void setRotation(float pitch, float yaw, float roll, float prevPitch, float prevYaw, float prevRoll) {
+		this.rotation = new Rotation(pitch, yaw, roll, prevPitch, prevYaw, prevRoll);
+	}
+	
+	public void setRotation(EulerAngle rotation) {
+		this.setRotation(rotation.getPitch(), rotation.getYaw(), rotation.getRoll());
 	}
 
 	public void setRotation(Vec3f rotation) {
-		this.setPitch(rotation.getX());
-		this.setYaw(rotation.getY());
-		this.setRoll(rotation.getZ());
-	}
-
-	@Override public void setPitch(float pitch) {
-		if (!Float.isFinite(pitch)) {
-			Util.error("Invalid entity pitch: " + pitch + ", discarding.");
-			return;
-		} else {
-			float p = ((pitch + 180) % 360) - 180;
-			if (pitch >= 180) {
-				super.setPitch(p);
-				this.prevPitch = p - (pitch - this.prevPitch);
-			} else if (pitch < -180) {
-				super.setPitch(p);
-				this.prevPitch = p + (pitch - this.prevPitch);
-			} else {
-				this.prevPitch = this.getPitch();
-				super.setPitch(p);
-			}
-		}
-	}
-
-	@Override public void setYaw(float yaw) {
-		if (!Float.isFinite(yaw)) {
-			Util.error("Invalid entity yaw: " + yaw + ", discarding.");
-			return;
-		} else {
-			float y = ((yaw + 180) % 360) - 180;
-			if (yaw >= 180) {
-				super.setYaw(y);
-				this.prevYaw = y - (yaw - this.prevYaw);
-			} else if (yaw < -180) {
-				super.setYaw(yaw);
-				this.prevYaw = y + (yaw - this.prevYaw);
-			} else {
-				this.prevYaw = this.getYaw();
-				super.setYaw(yaw);
-			}
-		}
-	}
-
-	public void setRoll(float roll) {
-		if (!Float.isFinite(roll)) {
-			Util.error("Invalid entity roll: " + roll + ", discarding.");
-			return;
-		} else {
-			float r = ((roll + 180) % 360) - 180;
-			if (roll >= 180) {
-				this.roll = r;
-				this.prevRoll = r - (roll - this.prevRoll);
-			} else if (roll < -180) {
-				this.roll = r;
-				this.prevRoll = r + (roll - this.prevRoll);
-			} else {
-				this.prevRoll = this.roll;
-				this.roll = r;
-			}
-		}
+		this.setRotation(rotation.getX(), rotation.getY(), rotation.getZ());
 	}
 
 	public void setRotationalVelocity(Vec3f rotationVel) {
 		this.rotationalVelocity = rotationVel;
-	}
-
-	public void setCrit(boolean crit) {
-		this.setProjectileFlag(CRIT_FLAG, crit);
-	}
-
-	private void setProjectileFlag(int index, boolean flag) {
-		byte b = this.dataTracker.get(PROJECTILE_FLAGS);
-		if (flag) {
-			this.dataTracker.set(PROJECTILE_FLAGS, (byte) (b | index));
-		} else {
-			this.dataTracker.set(PROJECTILE_FLAGS, (byte) (b & ~index));
-		}
 	}
 
 	@Override public void writeCustomDataToNbt(NbtCompound nbt) {
@@ -278,23 +200,23 @@ public class BrickEntity extends ProjectileEntity {
 		nbt.putShort("Age", this.age);
 		nbt.putByte("Pickup", (byte) this.pickupType.ordinal());
 		nbt.putDouble("Damage", this.damage);
-		nbt.putBoolean("Crit", this.isCrit());
 		nbt.putString("SoundEvent", Registry.SOUND_EVENT.getId(this.sound).toString());
 		if (this.hitBlock != null) {
 			nbt.put("HitBlock", NbtHelper.fromBlockState(this.hitBlock));
 		}
 		nbt.putBoolean("InGround", this.inGround);
-		nbt.putFloat("Roll", this.getRoll());
 		nbt.put("RotationalVelocity", this.toNbtList(this.rotationalVelocity.getX(), this.rotationalVelocity.getY(), this.rotationalVelocity.getZ()));
 	}
 
 	// =====METHODS=====
 
 	@Override public void tick() {
+		ThrowableBrick.LOGGER.info("============"+(world.isClient?"CLIENT":"SERVER")+" TICK============");
 		super.tick();
 		Vec3d vel = this.getVelocity();
 		Vec3d pos = this.getPos();
 		Vec3f rotVel = this.getRotationVelocity();
+		Rotation rot = this.getRotation();
 		BlockPos curBlockPos = this.getBlockPos();
 		BlockState curBlockState = this.world.getBlockState(curBlockPos);
 		VoxelShape curVoxelShape = curBlockState.getCollisionShape(this.world, curBlockPos);
@@ -310,7 +232,8 @@ public class BrickEntity extends ProjectileEntity {
 				this.fall();
 				return;
 			}
-			BrickEntityHelper.getRotation(pos, pos, pos, rotVel, vel, rotVel);
+			//TODO: make brick look nicer when it hits the ground
+			//BrickEntityHelper.getRotation(pos, pos, pos, rotVel, vel, rotVel);
 			if (!this.world.isClient) this.tickAge();
 			return;
 		}
@@ -351,24 +274,60 @@ public class BrickEntity extends ProjectileEntity {
 			drag = 0.975f;
 		}
 		this.setPosition(this.getX() + xVel, this.getY() + yVel, this.getZ() + zVel);
-		this.setRotation(this.getPitch() + rotVel.getX(), this.getYaw() + rotVel.getY(), this.getRoll() + rotVel.getZ());
+		this.setRotation(rot.getPitch() + rotVel.getX(), rot.getYaw() + rotVel.getY(), rot.getRoll() + rotVel.getZ());
 		rotVel.scale(drag);
 		Vec3d nextVel = vel.multiply(drag);
 		if (!this.hasNoGravity()) nextVel = nextVel.subtract(0, 0.05f, 0);
 		this.setVelocity(nextVel);
 		this.setRotationalVelocity(rotVel);
-		this.checkBlockCollision();// TODO: Look into checkBlockCollision
-		if (this.updateCount <= -1 && this.updateCount++ == -1) this.visible = true;
-		if (!this.world.isClient && this.needUpdateClient) {
+		this.checkBlockCollision();
+		if (!this.world.isClient) {
 			for (ServerPlayerEntity ply : PlayerLookup.tracking(this)) {
-				ServerPlayNetworking.send(ply, ThrowableBrick.BRICK_ROTATE_PACKET, this.getPacketData(this.getId(), this.getRotation(), this.getRotationVelocity()));
+				ServerPlayNetworking.send(ply, ThrowableBrick.BRICK_ROTATE_PACKET, this.getPacketData());
 			}
-			this.needUpdateClient = false;
 		}
+		if (this.world.isClient && this.inInit && this.initWait++ >= 0) this.inInit = false;
 	}
 
 	@Override protected void onEntityHit(EntityHitResult entityHitResult) {
-		GlfwUtil.makeJvmCrash();// TODO: onEntityHit
+		DamageSource damageSource;
+        Entity ownEnt = this.getOwner();
+        Entity hitEnt = entityHitResult.getEntity();
+        int damage = MathHelper.ceil(MathHelper.clamp(this.getVelocity().length() * this.damage, 0.0, Double.MAX_VALUE));
+        if (ownEnt == null)  damageSource = DamageSource.thrownProjectile(this, null);
+        else {
+            damageSource = DamageSource.thrownProjectile(this, ownEnt);
+            if (ownEnt instanceof LivingEntity) ((LivingEntity)ownEnt).onAttacking(hitEnt);
+        }
+        if (hitEnt.damage(damageSource, damage)) {
+            if (hitEnt.getType() == EntityType.ENDERMAN) return;
+            if (hitEnt instanceof LivingEntity) {
+                LivingEntity hitLivingEnt = (LivingEntity)hitEnt;
+                if (this.punchLvl > 0) {
+                    double d = Math.max(0.0, 1.0 - hitLivingEnt.getAttributeValue(EntityAttributes.GENERIC_KNOCKBACK_RESISTANCE));
+                    Vec3d vec3d = this.getVelocity().multiply(1.0, 0.0, 1.0).normalize().multiply((double)this.punchLvl * 0.6 * d);
+                    if (vec3d.lengthSquared() > 0.0) {
+                        hitLivingEnt.addVelocity(vec3d.x, 0.1, vec3d.z);
+                    }
+                }
+                if (!this.world.isClient && ownEnt instanceof LivingEntity) {
+                    EnchantmentHelper.onUserDamaged(hitLivingEnt, ownEnt);
+                    EnchantmentHelper.onTargetDamaged((LivingEntity)ownEnt, hitLivingEnt);
+                }
+                if (ownEnt != null && hitLivingEnt != ownEnt && hitLivingEnt instanceof PlayerEntity && ownEnt instanceof ServerPlayerEntity && !this.isSilent()) {
+                    ((ServerPlayerEntity)ownEnt).networkHandler.sendPacket(new GameStateChangeS2CPacket(GameStateChangeS2CPacket.PROJECTILE_HIT_PLAYER, GameStateChangeS2CPacket.DEMO_OPEN_SCREEN));
+                }
+            }
+            this.playSound(this.sound, 1.0f, 1.2f / (this.random.nextFloat() * 0.2f + 0.9f));
+        } else {
+            this.setVelocity(this.getVelocity().multiply(-0.04));
+            if (!this.world.isClient && this.getVelocity().lengthSquared() < 1.0E-7) {
+                if (this.pickupType == PickupPermission.ALLOWED) {
+                    this.dropStack(this.asItemStack(), 0.1f);
+                }
+                this.discard();
+            }
+        }
 	}
 
 	@Override protected void onBlockHit(BlockHitResult blockHitResult) {
@@ -380,19 +339,18 @@ public class BrickEntity extends ProjectileEntity {
 		this.setPos(this.getX() - pos.getX(), this.getY() - pos.getY(), this.getZ() - pos.getZ());
 		this.setRotationalVelocity(Vec3f.ZERO);
 		this.inGround = true;
-		this.setCrit(false);
-		this.sound = SoundEvents.ENTITY_ARROW_HIT;
-		this.needUpdateClient = true;
 	}
 
 	private void tickAge() {
-		if (++this.age >= 1200) this.discard();
+		if (++this.age >= MAX_AGE) this.discard();
 	}
 
 	private void fall() {
 		this.inGround = false;
 		this.setVelocity(this.getVelocity().multiply(this.random.nextFloat() * 0.2f, this.random.nextFloat() * 0.2f, this.random.nextFloat() * 0.2f));
-		this.needUpdateClient = true;
+		Vec3f rotVel = this.getRotationVelocity();
+		rotVel.multiplyComponentwise(this.random.nextFloat() * 0.5f, this.random.nextFloat() * 0.5f, this.random.nextFloat() * 0.5f);
+		this.setRotationalVelocity(rotVel);
 		this.age = 0;
 	}
 
